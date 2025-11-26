@@ -44,7 +44,6 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             WellMateTheme {
-                // Show the interactive screen (it uses viewModel() internally)
                 InteractivePredictorScreen()
             }
         }
