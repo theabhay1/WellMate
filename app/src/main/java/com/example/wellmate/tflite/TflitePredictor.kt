@@ -1,58 +1,103 @@
 package com.example.wellmate.tflite
 
 import android.content.Context
-import android.content.res.AssetFileDescriptor
-import android.util.Log
+import org.tensorflow.lite.Interpreter
+import org.json.JSONObject
+import java.io.BufferedReader
 import java.io.FileInputStream
+import java.io.InputStreamReader
 import java.nio.MappedByteBuffer
 import java.nio.channels.FileChannel
-import org.tensorflow.lite.Interpreter
 
-class TflitePredictor(context: Context, modelFilename: String = "health_model_fp16.tflite") {
+class TflitePredictor(
+    context: Context,
+    modelFilename: String = "health_model_fp16.tflite",
+    preprocFile: String = "preproc_for_android.json"
+) {
 
     private val interpreter: Interpreter
-    val inputSize: Int
-    val inputShape: IntArray
+    private val featureOrder: List<String>
+    private val means: FloatArray
+    private val stds: FloatArray
 
     init {
-        // load model file from assets
-        val afd: AssetFileDescriptor = context.assets.openFd(modelFilename)
-        val inputStream = FileInputStream(afd.fileDescriptor)
-        val channel: FileChannel = inputStream.channel
-        val mapped: MappedByteBuffer = channel.map(FileChannel.MapMode.READ_ONLY, afd.startOffset, afd.declaredLength)
+        interpreter = Interpreter(loadModelFile(context, modelFilename))
 
-        // create interpreter
-        interpreter = Interpreter(mapped)
+        val json = loadJson(context, preprocFile)
 
-        // inspect input tensor shape & dtype
-        val t = interpreter.getInputTensor(0)
-        inputShape = t.shape() // usually [1, featureCount] or [featureCount]
-        inputSize = if (inputShape.size >= 2) inputShape[1] else inputShape[0]
-        Log.d("TFLITE", "Loaded model '$modelFilename' inputShape=${inputShape.contentToString()} dtype=${t.dataType()}")
+        // ---- READ FEATURE ORDER (correct key) ----
+        val inputOrderJson = json.getJSONArray("input_order")
+        featureOrder = List(inputOrderJson.length()) { i ->
+            inputOrderJson.getString(i)
+        }
+
+        // ---- READ NUMERIC MEANS/STDS (first 12 features) ----
+        val numMeansJson = json.getJSONArray("numeric_means")
+        val numStdsJson = json.getJSONArray("numeric_stds")
+
+        val numericCount = numMeansJson.length() // 12
+
+        // ---- Extend means/stds to match full feature order (16 features) ----
+        val fullMeans = FloatArray(featureOrder.size)
+        val fullStds = FloatArray(featureOrder.size)
+
+        // Fill numeric part
+        for (i in 0 until numericCount) {
+            fullMeans[i] = numMeansJson.getDouble(i).toFloat()
+            fullStds[i] = numStdsJson.getDouble(i).toFloat()
+        }
+
+        // Fill binary part: no scaling → mean=0, std=1
+        for (i in numericCount until featureOrder.size) {
+            fullMeans[i] = 0f
+            fullStds[i] = 1f
+        }
+
+        means = fullMeans
+        stds = fullStds
     }
 
-    /**
-     * Predict risk value from features.
-     * features: FloatArray sized exactly inputSize in the same order as feature_spec.json
-     * returns: float risk in [0..100]
-     */
-    fun predictRisk(features: FloatArray): Float {
-        require(features.size == inputSize) { "Expected $inputSize features, got ${features.size}" }
-        // model expects shape [1, N] -> provide as arrayOf(features)
-        val inputArray = arrayOf(features)
+    private fun loadModelFile(context: Context, filename: String): MappedByteBuffer {
+        val fd = context.assets.openFd(filename)
+        val fis = FileInputStream(fd.fileDescriptor)
+        return fis.channel.map(FileChannel.MapMode.READ_ONLY, fd.startOffset, fd.declaredLength)
+    }
+
+    private fun loadJson(context: Context, filename: String): JSONObject {
+        val stream = context.assets.open(filename)
+        val text = BufferedReader(InputStreamReader(stream)).readText()
+        return JSONObject(text)
+    }
+
+    fun predict(input: Map<String, Any>): Float {
+        val rawVector = FloatArray(featureOrder.size)
+
+        // Build raw features from input map
+        for (i in featureOrder.indices) {
+            val key = featureOrder[i]
+            val value = when (val v = input[key]) {
+                is Number -> v.toFloat()
+                is String -> v.toFloatOrNull() ?: 0f
+                else -> 0f
+            }
+            rawVector[i] = value
+        }
+
+        // Apply scaling
+        val processed = FloatArray(rawVector.size) { i ->
+            val std = stds[i]
+            if (std == 0f) rawVector[i] - means[i] else (rawVector[i] - means[i]) / std
+        }
+
+        val inputBatch = arrayOf(processed)
         val output = Array(1) { FloatArray(1) }
-        interpreter.run(inputArray, output)
-        val raw = output[0][0]
-        val clamped = raw.coerceIn(0f, 100f)
-        Log.d("TFLITE", "predictRisk raw=$raw clamped=$clamped")
-        return clamped
+
+        interpreter.run(inputBatch, output)
+
+        return output[0][0].coerceIn(0f, 100f)
     }
 
     fun close() {
-        try {
-            interpreter.close()
-        } catch (e: Exception) {
-            Log.w("TFLITE", "Error closing interpreter: ${e.message}")
-        }
+        interpreter.close()
     }
 }

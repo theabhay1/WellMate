@@ -1,0 +1,118 @@
+{
+  "numeric_features": [
+    "Age",
+    "Height_cm",
+    "Weight_kg",
+    "BMI",
+    "Daily_Steps",
+    "Calories_Intake",
+    "Hours_of_Sleep",
+    "Heart_Rate",
+    "Systolic_BP",
+    "Diastolic_BP",
+    "Exercise_Hours_per_Week",
+    "Alcohol_Consumption_per_Week"
+  ],
+  "binary_features": [
+    "Gender",
+    "Smoker",
+    "Diabetic",
+    "Heart_Disease"
+  ],
+  "numeric_means": [
+    49.07053571428571,
+    173.55709418879732,
+    81.64822648213251,
+    26.648051805918982,
+    9585.566964285714,
+    2357.2794642857143,
+    6.682543377686172,
+    84.84688621567261,
+    118.33466194020664,
+    77.12772773158227,
+    5.465637962120753,
+    5.588392857142857
+  ],
+  "numeric_stds": [
+    17.559628709835977,
+    13.853670993300238,
+    23.55329068357191,
+    6.778282959831311,
+    6881.8889028024705,
+    825.0400680354855,
+    1.7142621271687049,
+    21.344610147333672,
+    24.97277872787007,
+    15.314501874901383,
+    5.954263189800901,
+    4.430741745700356
+  ],
+  "input_order": [
+    "Age",
+    "Height_cm",
+    "Weight_kg",
+    "BMI",
+    "Daily_Steps",
+    "Calories_Intake",
+    "Hours_of_Sleep",
+    "Heart_Rate",
+    "Systolic_BP",
+    "Diastolic_BP",
+    "Exercise_Hours_per_Week",
+    "Alcohol_Consumption_per_Week",
+    "Gender",
+    "Smoker",
+    "Diabetic",
+    "Heart_Disease"
+  ],
+  "feature_ranges": {
+    "Age": [
+      10,
+      100
+    ],
+    "Height_cm": [
+      100,
+      230
+    ],
+    "Weight_kg": [
+      20,
+      300
+    ],
+    "BMI": [
+      10,
+      70
+    ],
+    "Daily_Steps": [
+      0,
+      100000
+    ],
+    "Calories_Intake": [
+      500,
+      10000
+    ],
+    "Hours_of_Sleep": [
+      0,
+      24
+    ],
+    "Heart_Rate": [
+      20,
+      220
+    ],
+    "Systolic_BP": [
+      60,
+      260
+    ],
+    "Diastolic_BP": [
+      30,
+      180
+    ],
+    "Exercise_Hours_per_Week": [
+      0,
+      300
+    ],
+    "Alcohol_Consumption_per_Week": [
+      0,
+      300
+    ]
+  }
+}

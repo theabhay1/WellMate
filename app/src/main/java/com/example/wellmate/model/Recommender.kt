@@ -1,15 +1,7 @@
 package com.example.wellmate.model
 
-/**
- * Small utility object that contains BMR, calorie, macro and sample meal helpers.
- * These are intentionally simple rule-of-thumb formulas for demo / prototype use.
- *
- * Place under: com.example.wellmate.model
- */
-
 object Recommender {
 
-    // Harris-Benedict approx BMR (sex: 0 = male, 1 = female)
     fun bmr(sex: Int, weightKg: Float, heightCm: Float, age: Int): Float {
         return if (sex == 0) {
             // male
@@ -20,7 +12,6 @@ object Recommender {
         }
     }
 
-    // activity: 0..4 (sedentary -> extra active)
     private fun activityMultiplier(activity: Int): Float {
         return when (activity.coerceIn(0, 4)) {
             0 -> 1.2f
@@ -31,7 +22,6 @@ object Recommender {
         }
     }
 
-    // goal: "lose", "gain", "maintain"
     fun recommendedCalories(bmr: Float, activity: Int, goal: String, sex: Int): Int {
         val maintenance = bmr * activityMultiplier(activity)
         return when (goal.lowercase()) {
@@ -41,9 +31,7 @@ object Recommender {
         }
     }
 
-    // returns protein(g/day), fat(g/day), carbs(g/day)
     fun macros(totalCalories: Int, weightKg: Float, goal: String): Triple<Int, Int, Int> {
-        // simple rules:
         val proteinPerKg = when (goal.lowercase()) {
             "gain" -> 2.0f
             "lose" -> 1.8f
@@ -58,7 +46,6 @@ object Recommender {
         return Triple(proteinG, fatG, carbsG)
     }
 
-    // Simple sample meals tailored to Indian diet preference (vegetarian/non_vegetarian)
     fun sampleMealsIndian(dietType: String, calories: Int): List<String> {
         val d = dietType.lowercase().trim()
         val meals = mutableListOf<String>()
@@ -79,7 +66,6 @@ object Recommender {
         return meals
     }
 
-    // Very simple exercise plan suggestions
     fun exercisePlan(goal: String, activity: Int): String {
         val base = when (activity) {
             0 -> "Start with 15-20 min walking, 3x/week"

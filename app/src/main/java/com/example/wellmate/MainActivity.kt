@@ -1,50 +1,60 @@
 package com.example.wellmate
 
-// core Android / Activity
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-
-// ViewModel helpers
 import androidx.activity.viewModels
-import androidx.lifecycle.viewmodel.compose.viewModel
-
-// Compose UI
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
-import com.example.wellmate.ui.InteractivePredictorScreen
-import com.example.wellmate.ui.LatestResultCard
-
-// Coroutines
-import kotlinx.coroutines.launch
-
-// Your app packages
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
 import com.example.wellmate.ui.theme.WellMateTheme
-import com.example.wellmate.ui.LatestResultCard
-import com.example.wellmate.viewmodel.ProfileViewModel
+import com.example.wellmate.viewmodel.HealthPredictionViewModel
+import com.example.wellmate.ui.NewHealthInputScreen
+import com.example.wellmate.ui.NewResultScreen
 
-@OptIn(ExperimentalMaterial3Api::class)
 class MainActivity : ComponentActivity() {
 
-    // If you prefer Activity-scoped ViewModel instance instead of viewModel() inside Compose:
-    // private val activityVm: ProfileViewModel by viewModels()
+    // Always create ViewModel at Activity level
+    private val healthVM by viewModels<HealthPredictionViewModel>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        val userId = "default_user_001"   // You may replace later with real user login
+
         setContent {
             WellMateTheme {
-                InteractivePredictorScreen()
+
+                val navController = rememberNavController()
+
+                NavHost(
+                    navController = navController,
+                    startDestination = "health_input"
+                ) {
+
+                    // 1️⃣ INPUT SCREEN (16 inputs)
+                    composable("health_input") {
+                        NewHealthInputScreen(
+                            viewModel = healthVM,
+                            userId = userId,
+                            onResult = { navController.navigate("result") }
+                        )
+                    }
+
+                    // 2️⃣ RESULT SCREEN
+                    composable("result") {
+                        NewResultScreen(
+                            viewModel = healthVM,
+                            onBack = {
+                                navController.popBackStack()
+                                // After back, status resets to idle to avoid instant navigation
+                                healthVM.setStatus("idle")
+                            }
+                        )
+                    }
+                }
             }
         }
     }
