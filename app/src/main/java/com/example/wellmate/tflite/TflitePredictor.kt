@@ -1,8 +1,9 @@
 package com.example.wellmate.tflite
 
 import android.content.Context
-import org.tensorflow.lite.Interpreter
+import android.util.Log
 import org.json.JSONObject
+import org.tensorflow.lite.Interpreter
 import java.io.BufferedReader
 import java.io.FileInputStream
 import java.io.InputStreamReader
@@ -22,39 +23,56 @@ class TflitePredictor(
 
     init {
         interpreter = Interpreter(loadModelFile(context, modelFilename))
-
         val json = loadJson(context, preprocFile)
 
-        // ---- READ FEATURE ORDER (correct key) ----
-        val inputOrderJson = json.getJSONArray("input_order")
-        featureOrder = List(inputOrderJson.length()) { i ->
-            inputOrderJson.getString(i)
+        // Try to read input_order (fallbacks supported)
+        featureOrder = when {
+            json.has("input_order") -> {
+                val arr = json.getJSONArray("input_order")
+                List(arr.length()) { i -> arr.getString(i) }
+            }
+            json.has("feature_order") -> {
+                val arr = json.getJSONArray("feature_order")
+                List(arr.length()) { i -> arr.getString(i) }
+            }
+            else -> throw IllegalArgumentException("preproc json missing 'input_order' or 'feature_order'")
         }
 
-        // ---- READ NUMERIC MEANS/STDS (first 12 features) ----
-        val numMeansJson = json.getJSONArray("numeric_means")
-        val numStdsJson = json.getJSONArray("numeric_stds")
+        // numeric means/stds arrays correspond to numeric_features length (usually first N)
+        val numericMeans = if (json.has("numeric_means")) json.getJSONArray("numeric_means") else null
+        val numericStds = if (json.has("numeric_stds")) json.getJSONArray("numeric_stds") else null
 
-        val numericCount = numMeansJson.length() // 12
+        val numericCount = numericMeans?.length() ?: 0
 
-        // ---- Extend means/stds to match full feature order (16 features) ----
-        val fullMeans = FloatArray(featureOrder.size)
-        val fullStds = FloatArray(featureOrder.size)
+        // prepare full means/stds to match featureOrder length
+        val fm = FloatArray(featureOrder.size)
+        val fs = FloatArray(featureOrder.size)
 
-        // Fill numeric part
-        for (i in 0 until numericCount) {
-            fullMeans[i] = numMeansJson.getDouble(i).toFloat()
-            fullStds[i] = numStdsJson.getDouble(i).toFloat()
+        if (numericMeans != null && numericStds != null) {
+            // fill first numericCount
+            for (i in 0 until numericCount) {
+                fm[i] = numericMeans.getDouble(i).toFloat()
+                fs[i] = numericStds.getDouble(i).toFloat()
+            }
+            // remaining (binary features) -> mean 0 std 1
+            for (i in numericCount until featureOrder.size) {
+                fm[i] = 0f
+                fs[i] = 1f
+            }
+        } else {
+            // fallback: zero mean, unit std
+            for (i in fm.indices) {
+                fm[i] = 0f
+                fs[i] = 1f
+            }
         }
 
-        // Fill binary part: no scaling → mean=0, std=1
-        for (i in numericCount until featureOrder.size) {
-            fullMeans[i] = 0f
-            fullStds[i] = 1f
-        }
+        means = fm
+        stds = fs
 
-        means = fullMeans
-        stds = fullStds
+        Log.d("TFLITE_DEBUG", "FEATURE ORDER = $featureOrder")
+        Log.d("TFLITE_DEBUG", "MEANS = ${means.joinToString()}")
+        Log.d("TFLITE_DEBUG", "STDS  = ${stds.joinToString()}")
     }
 
     private fun loadModelFile(context: Context, filename: String): MappedByteBuffer {
@@ -69,35 +87,48 @@ class TflitePredictor(
         return JSONObject(text)
     }
 
+    /**
+     * input: map of featureName -> numeric value (Float/Double/Int)
+     * returns: predicted float in [0,100]
+     */
     fun predict(input: Map<String, Any>): Float {
-        val rawVector = FloatArray(featureOrder.size)
-
-        // Build raw features from input map
+        // build raw vector according to featureOrder
+        val raw = FloatArray(featureOrder.size)
         for (i in featureOrder.indices) {
             val key = featureOrder[i]
-            val value = when (val v = input[key]) {
+            val v = input[key]
+            raw[i] = when (v) {
                 is Number -> v.toFloat()
                 is String -> v.toFloatOrNull() ?: 0f
                 else -> 0f
             }
-            rawVector[i] = value
         }
 
-        // Apply scaling
-        val processed = FloatArray(rawVector.size) { i ->
+        // Log raw
+        Log.d("TFLITE_DEBUG", "RAW VECTOR = ${raw.joinToString()}")
+
+        // standardize using means/stds
+        val processed = FloatArray(raw.size) { i ->
             val std = stds[i]
-            if (std == 0f) rawVector[i] - means[i] else (rawVector[i] - means[i]) / std
+            if (std == 0f) raw[i] - means[i] else (raw[i] - means[i]) / std
         }
 
+        Log.d("TFLITE_DEBUG", "PROCESSED VECTOR = ${processed.joinToString()}")
+
+        // TFLite expects a batch dimension: [1, features]
         val inputBatch = arrayOf(processed)
         val output = Array(1) { FloatArray(1) }
 
         interpreter.run(inputBatch, output)
 
-        return output[0][0].coerceIn(0f, 100f)
+        val out = output[0][0]
+        Log.d("TFLITE_DEBUG", "RAW MODEL OUTPUT = $out")
+        val clamped = out.coerceIn(0f, 100f)
+        Log.d("TFLITE_DEBUG", "CLAMPED OUTPUT = $clamped")
+        return clamped
     }
 
     fun close() {
-        interpreter.close()
+        try { interpreter.close() } catch (_: Exception) {}
     }
 }

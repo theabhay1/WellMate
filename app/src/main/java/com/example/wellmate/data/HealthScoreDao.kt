@@ -7,7 +7,6 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface HealthScoreDao {
-
     @Insert
     suspend fun insert(score: HealthScore)
 

@@ -1,36 +1,40 @@
 package com.example.wellmate.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.wellmate.viewmodel.HealthPredictionViewModel
 
-// ---------------- VALIDATION ----------------
-fun isValid(value: String, min: Float, max: Float): Boolean {
-    val num = value.toFloatOrNull() ?: return false
-    return num in min..max
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NewHealthInputScreen(
     viewModel: HealthPredictionViewModel,
     userId: String,
     onResult: () -> Unit
 ) {
+    val scroll = rememberScrollState()
+    val focus = LocalFocusManager.current
+    val isDark = isSystemInDarkTheme()
 
-    val scrollState = rememberScrollState()
-
-    // Bind ViewModel states to UI
+    // Collect ViewModel state
     val age by viewModel.age.collectAsState()
     val height by viewModel.height.collectAsState()
     val weight by viewModel.weight.collectAsState()
@@ -53,7 +57,8 @@ fun NewHealthInputScreen(
 
     var shouldNavigate by remember { mutableStateOf(false) }
 
-    // Navigate once score is ready
+    LaunchedEffect(Unit) { viewModel.resetState() }
+
     LaunchedEffect(status) {
         if (shouldNavigate && status == "ok") {
             shouldNavigate = false
@@ -61,40 +66,65 @@ fun NewHealthInputScreen(
         }
     }
 
+    /* ---------------- Theme-Aware Gradient ---------------- */
+    val gradient = if (isDark) {
+        Brush.verticalGradient(listOf(Color(0xFF121212), Color(0xFF263238)))
+    } else {
+        Brush.verticalGradient(listOf(Color(0xFF2C3E50), Color(0xFF4CA1AF)))
+    }
+
     Scaffold(
+        containerColor = Color.Transparent,
         bottomBar = {
-            NavigationBar {
-                Box(
+            Surface(
+                tonalElevation = 8.dp,
+                shadowElevation = 16.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
                     modifier = Modifier
+                        .navigationBarsPadding()
+                        .imePadding()
                         .padding(16.dp)
-                        .fillMaxWidth()
                 ) {
+                    if (status.startsWith("error")) {
+                        Text(
+                            text = "⚠ " + status.removePrefix("error: "),
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 8.dp)
+                        )
+                    }
+
                     Button(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(54.dp),
                         onClick = {
-
-                            // VALIDATION
-                            val valid =
-                                isValid(age, 1f, 120f) &&
-                                        isValid(height, 50f, 250f) &&
-                                        isValid(weight, 20f, 300f) &&
-                                        isValid(steps, 0f, 50000f) &&
-                                        isValid(sleep, 0f, 18f) &&
-                                        isValid(calories, 500f, 8000f) &&
-                                        isValid(heart, 30f, 200f) &&
-                                        isValid(exercise, 0f, 50f) &&
-                                        isValid(alcohol, 0f, 200f)
-
-                            if (!valid) {
-                                viewModel.setStatus("error: invalid_input")
-                                return@Button
-                            }
-
+                            focus.clearFocus()
                             shouldNavigate = true
                             viewModel.predictAndSave(userId)
-                        }
+                        },
+                        shape = MaterialTheme.shapes.medium,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        )
                     ) {
-                        Text("Calculate Health Score")
+                        if (status == "running") {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Text("Calculating...", style = MaterialTheme.typography.titleMedium)
+                        } else {
+                            Text("Calculate Score", style = MaterialTheme.typography.titleMedium)
+                        }
                     }
                 }
             }
@@ -103,144 +133,269 @@ fun NewHealthInputScreen(
 
         Column(
             modifier = Modifier
+                .fillMaxSize()
+                .background(gradient)
                 .padding(padding)
-                .padding(16.dp)
-                .verticalScroll(scrollState),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
+                .padding(horizontal = 16.dp)
+                .verticalScroll(scroll),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
 
-            // ---------------- PERSONAL DETAILS ----------------
-            SectionHeader("Personal Details")
-            DropdownField("Gender", gender, listOf("Male", "Female")) {
-                viewModel.gender.value = it
-            }
-            NumericField("Age", age, { viewModel.age.value = it }, 1f, 120f)
+            Spacer(Modifier.height(8.dp))
 
-            // ---------------- BODY METRICS ----------------
-            SectionHeader("Body Metrics")
-            NumericField("Height (cm)", height, { viewModel.height.value = it }, 50f, 250f)
-            NumericField("Weight (kg)", weight, { viewModel.weight.value = it }, 20f, 300f)
+            /* ---------------- BRANDED HEADER ---------------- */
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "WELLMATE",
+                    style = androidx.compose.ui.text.TextStyle(
+                        brush = Brush.linearGradient(
+                            colors = listOf(Color(0xFFFFFFFF), Color(0xFF80CBC4))
+                        ),
+                        fontSize = 36.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 4.sp,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif
+                    )
+                )
 
-            // ---------------- DAILY ACTIVITY ----------------
-            SectionHeader("Daily Activity")
-            NumericField("Daily Steps", steps, { viewModel.steps.value = it }, 0f, 50000f)
-            NumericField("Exercise Hours/Week", exercise, { viewModel.exercise.value = it }, 0f, 50f)
-            NumericField("Sleep (Hours)", sleep, { viewModel.sleep.value = it }, 0f, 18f)
+                Spacer(Modifier.height(4.dp))
 
-            // ---------------- VITALS ----------------
-            SectionHeader("Vitals")
-            DropdownField("Systolic BP (mmHg)", systolic,
-                listOf("90–110", "110–130", "130–150", "150–170", "170+")
-            ) { viewModel.systolic.value = it }
-
-            DropdownField("Diastolic BP (mmHg)", diastolic,
-                listOf("60–75", "75–90", "90–105", "105–120", "120+")
-            ) { viewModel.diastolic.value = it }
-
-            NumericField("Heart Rate (bpm)", heart, { viewModel.heart.value = it }, 30f, 200f)
-
-            // ---------------- LIFESTYLE HABITS ----------------
-            SectionHeader("Lifestyle Habits")
-            NumericField("Calories Intake Per Day", calories, { viewModel.calories.value = it }, 500f, 8000f)
-            NumericField("Alcohol/Week (drinks)", alcohol, { viewModel.alcohol.value = it }, 0f, 200f)
-
-            DropdownField("Smoker", smoker, listOf("Yes", "No")) {
-                viewModel.smoker.value = it
-            }
-            DropdownField("Diabetic", diabetic, listOf("Yes", "No")) {
-                viewModel.diabetic.value = it
-            }
-            DropdownField("Heart Disease", heartDisease, listOf("Yes", "No")) {
-                viewModel.heartDisease.value = it
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = null,
+                        tint = Color(0xFF80CBC4),
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "AI Powered Health Companion",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Color(0xFFB2DFDB),
+                        fontWeight = FontWeight.Medium,
+                        letterSpacing = 1.sp
+                    )
+                }
             }
 
-            // STATUS
-            if (status.startsWith("error"))
-                Text("⚠ Invalid inputs. Please check red fields.", color = Color.Red)
+            /* ---------------- SECTION: Personal ---------------- */
+            SectionCardSolid(title = "Personal Details") {
+                DropdownField("Gender", gender, listOf("Male", "Female")) { viewModel.gender.value = it }
+                NumberField("Age", age, "yrs", maxLength = 3) { viewModel.age.value = it }
+            }
 
-            if (status == "running")
-                Text("Calculating...", color = MaterialTheme.colorScheme.primary)
+            /* ---------------- SECTION: Body Metrics ---------------- */
+            SectionCardSolid(title = "Body Metrics") {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    NumberField("Height", height, "cm", Modifier.weight(1f), maxLength = 5) { viewModel.height.value = it }
+                    NumberField("Weight", weight, "kg", Modifier.weight(1f), maxLength = 5) { viewModel.weight.value = it }
+                }
 
-            Spacer(modifier = Modifier.height(90.dp))
+                val h = height.toFloatOrNull()
+                val w = weight.toFloatOrNull()
+                if (h != null && w != null && h > 0) {
+                    val bmi = w / ((h / 100) * (h / 100))
+                    Text(
+                        "Estimated BMI: %.1f".format(bmi),
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+                }
+            }
+
+            /* ---------------- SECTION: Activity & Sleep ---------------- */
+            SectionCardSolid(title = "Activity & Sleep") {
+                // Steps Logic with Error State
+                Column {
+                    val stepVal = steps.toIntOrNull() ?: 0
+                    val isStepError = stepVal > 15000
+
+                    NumberField(
+                        label = "Daily Steps",
+                        value = steps,
+                        suffix = "steps",
+                        maxLength = 6,
+                        isError = isStepError // Turns field red
+                    ) { viewModel.steps.value = it }
+
+                    if (isStepError) {
+                        Text(
+                            text = "⚠️ > 15k steps is unusually high for daily avg.",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(start = 4.dp, top = 4.dp)
+                        )
+                    }
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    val sleepOptions = (4..12).map { it.toString() }
+                    DropdownField(
+                        label = "Sleep",
+                        selected = sleep,
+                        options = sleepOptions,
+                        modifier = Modifier.weight(1f),
+                        onSelect = { viewModel.sleep.value = it }
+                    )
+
+                    // Exercise Logic with Error State
+                    Column(modifier = Modifier.weight(1f)) {
+                        val exVal = exercise.toFloatOrNull() ?: 0f
+                        val isExError = exVal > 14
+
+                        NumberField(
+                            label = "Exercise",
+                            value = exercise,
+                            suffix = "hrs/wk",
+                            maxLength = 4,
+                            isError = isExError, // Turns field red
+                            modifier = Modifier.fillMaxWidth()
+                        ) { viewModel.exercise.value = it }
+
+                        if (isExError) {
+                            Text(
+                                text = "⚠️ > 2hrs/day?",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.labelSmall,
+                                modifier = Modifier.padding(start = 4.dp, top = 4.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            /* ---------------- Vitals ---------------- */
+            SectionCardSolid(title = "Heart & BP") {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    DropdownField("Sys BP", systolic, listOf("100", "110", "120", "130", "140", "150"), Modifier.weight(1f)) {
+                        viewModel.systolic.value = it
+                    }
+                    DropdownField("Dia BP", diastolic, listOf("60", "70", "80", "90", "100"), Modifier.weight(1f)) {
+                        viewModel.diastolic.value = it
+                    }
+                }
+                NumberField("Heart Rate", heart, "bpm", maxLength = 3) { viewModel.heart.value = it }
+            }
+
+            /* ---------------- Lifestyle ---------------- */
+            SectionCardSolid(title = "Lifestyle Habits") {
+                NumberField("Calories Intake", calories, "kcal", maxLength = 5) { viewModel.calories.value = it }
+
+                val alcoholOptions = (0..7).map { it.toString() }
+                DropdownField(
+                    label = "Alcohol (units/wk)",
+                    selected = alcohol,
+                    options = alcoholOptions,
+                    onSelect = { viewModel.alcohol.value = it }
+                )
+
+                DropdownField("Smoker?", smoker, listOf("No", "Yes")) { viewModel.smoker.value = it }
+                DropdownField("Diabetic?", diabetic, listOf("No", "Yes")) { viewModel.diabetic.value = it }
+                DropdownField("Heart Disease History?", heartDisease, listOf("No", "Yes")) { viewModel.heartDisease.value = it }
+            }
+
+            Spacer(Modifier.height(20.dp))
         }
     }
 }
 
-// ---------------- SECTION HEADER ----------------
+/* ------------------ REUSABLE COMPONENTS ------------------ */
+
 @Composable
-fun SectionHeader(title: String) {
-    Text(
-        text = title,
-        style = MaterialTheme.typography.titleMedium,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(vertical = 6.dp)
+fun SectionCardSolid(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.primary
+            )
+            content()
+        }
+    }
+}
+
+@Composable
+fun NumberField(
+    label: String,
+    value: String,
+    suffix: String = "",
+    modifier: Modifier = Modifier.fillMaxWidth(),
+    maxLength: Int = 10,
+    isError: Boolean = false, // New parameter to trigger red visual state
+    onChange: (String) -> Unit
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = { input ->
+            if (input.length <= maxLength) {
+                if (input.count { it == '.' } <= 1 && input.all { it.isDigit() || it == '.' }) {
+                    onChange(input)
+                }
+            }
+        },
+        label = { Text(label) },
+        suffix = { if(suffix.isNotEmpty()) Text(suffix) },
+        singleLine = true,
+        isError = isError, // Highlights the box in Red
+        keyboardOptions = KeyboardOptions(
+            keyboardType = KeyboardType.Number,
+            imeAction = ImeAction.Next
+        ),
+        modifier = modifier
     )
 }
 
-// ---------------- NUMERIC FIELD ----------------
-@Composable
-fun NumericField(
-    label: String,
-    value: String,
-    onChange: (String) -> Unit,
-    min: Float,
-    max: Float
-) {
-    val isError = value.isNotBlank() && !isValid(value, min, max)
-
-    Column(modifier = Modifier.fillMaxWidth()) {
-
-        OutlinedTextField(
-            value = value,
-            onValueChange = { onChange(it) },
-            label = { Text(label) },
-            singleLine = true,
-            isError = isError,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        if (isError) {
-            Text(
-                text = "Enter a value between $min and $max",
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall
-            )
-        }
-    }
-}
-
-// ---------------- DROPDOWN FIELD ----------------
 @Composable
 fun DropdownField(
     label: String,
     selected: String,
     options: List<String>,
+    modifier: Modifier = Modifier.fillMaxWidth(),
     onSelect: (String) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
 
-    Box {
+    Box(modifier = modifier) {
         OutlinedTextField(
             value = selected,
             onValueChange = {},
-            label = { Text(label) },
             readOnly = true,
-            modifier = Modifier.fillMaxWidth(),
+            label = { Text(label) },
             trailingIcon = {
                 IconButton(onClick = { expanded = true }) {
                     Icon(Icons.Default.ArrowDropDown, contentDescription = null)
                 }
-            }
+            },
+            modifier = Modifier.fillMaxWidth()
         )
 
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            options.forEach { option ->
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.background(MaterialTheme.colorScheme.surface)
+        ) {
+            options.forEach { opt ->
                 DropdownMenuItem(
-                    text = { Text(option) },
+                    text = { Text(opt, color = MaterialTheme.colorScheme.onSurface) },
                     onClick = {
                         expanded = false
-                        onSelect(option)
+                        onSelect(opt)
                     }
                 )
             }
